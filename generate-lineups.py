@@ -1,11 +1,20 @@
 import pandas as pd
 
-# loads player data from Excel and prepares a list of all eligible positions for each player
+# loads player data from CSV and prepares a list of all eligible positions for each player
 def load_and_prepare_data(file_path):
-    df = pd.read_excel(file_path, sheet_name='Lineup')
+    df = pd.read_csv(file_path)
+    # Fill NA values with empty strings and strip whitespace
     for i in range(1, 7):
-        df[f"Position{i}"] = df[f"Position{i}"].fillna("").str.strip()
+        position_col = f"Position{i}"
+        if position_col in df.columns:
+            df[position_col] = df[position_col].fillna("").astype(str).str.strip()
+        else:
+            df[position_col] = ""
+            
+    # Create a list of all positions for each player
     df["All_Positions"] = df[[f"Position{i}" for i in range(1, 7)]].values.tolist()
+    # Filter out empty strings from the positions list
+    df["All_Positions"] = df["All_Positions"].apply(lambda positions: [pos for pos in positions if pos])
     return df
 
 # calculates a custom batting score for a player based on weighted stats
@@ -14,12 +23,12 @@ def batting_score(player, contact_col, power_col):
         player[contact_col] * 0.3 +
         player[power_col] * 0.25 +
         player["Vision"] * 0.15 +
-        player["Clutch"] * 0.15 +
-        player["Speed"] * 0.10 +
+        player["Clutch"] * 0.2 +
+        player["Speed"] * 0.2 +
         player["AtBats"] * 0.05 +
         player["HR"] * 0.05 +
-        player["RBI"] * 0.05 +
-        player["Average"] * 0.05
+        player["RBI"] * 0.1 +
+        player["Average"] * 0.15
     )
 
 # builds a dictionary mapping each needed position to all eligible player candidates, with scores
@@ -95,7 +104,7 @@ def find_best_lineup_backtracking(df, positions_needed, contact_col, power_col):
 
 # main entry point: loads data, generates lineups for RHP and LHP, and prints results
 def main():
-    file_path = 'MLB2K25-AI.xlsx'
+    file_path = 'roster.csv'  # Updated to use the CSV file instead of Excel
     positions_needed = ["C", "1B", "2B", "3B", "SS", "LF", "CF", "RF", "DH"]
     df_updated = load_and_prepare_data(file_path)
     lineup_vs_rhp_sorted = find_best_lineup_backtracking(df_updated, positions_needed, contact_col="ContactR", power_col="PowerR")
