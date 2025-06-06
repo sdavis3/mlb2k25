@@ -35,6 +35,138 @@ def save_backup(df, file_path):
         return backup_path
     return None
 
+def delete_player(df, player_name, file_path):
+    """Delete a player from the dataframe and save changes
+    
+    Args:
+        df: DataFrame containing player data
+        player_name: Name of the player to delete
+        file_path: Path to the CSV file to save changes
+        
+    Returns:
+        tuple: (Updated DataFrame, backup path)
+    """
+    # Make backup before deletion
+    backup_path = save_backup(df, file_path)
+    
+    # Delete the player
+    updated_df = df[df["Player"] != player_name].reset_index(drop=True)
+    
+    # Save changes
+    updated_df.to_csv(file_path, index=False)
+    
+    return updated_df, backup_path
+
+def delete_players_batch(df, player_names, file_path):
+    """Delete multiple players from the dataframe in a single operation
+    
+    Args:
+        df: DataFrame containing player data
+        player_names: List of player names to delete
+        file_path: Path to the CSV file to save changes
+        
+    Returns:
+        tuple: (Updated DataFrame, backup path)
+    """
+    # Create backup before any modifications
+    backup_path = save_backup(df, file_path)
+    
+    # Remove all selected players at once for better performance
+    updated_df = df[~df["Player"].isin(player_names)].reset_index(drop=True)
+    
+    # Save the updated dataframe
+    updated_df.to_csv(file_path, index=False)
+    
+    return updated_df, backup_path
+
+def add_player_form_component(df, csv_file):
+    """Modular component for adding new players
+    
+    Args:
+        df: DataFrame containing player data
+        csv_file: Path to save the updated CSV
+    
+    Returns:
+        Updated DataFrame if player added, original otherwise
+    """
+    with st.form("add_player_form"):
+        col1, col2, col3 = st.columns(3)
+        
+        # Basic info
+        with col1:
+            new_player_name = st.text_input("Player Name", value="")
+            new_bats = st.selectbox("Bats", options=["", "R", "L", "S"], index=0)
+            
+            # Position selection - all empty
+            new_positions = []
+            for i in range(1, 7):
+                new_positions.append(st.text_input(f"Position {i}", value=""))
+        
+        # Stats - all zeroes
+        with col2:
+            new_avg = st.number_input("Average", value=0.000, format="%.3f", min_value=0.0, max_value=1.0, step=0.001)
+            new_hr = st.number_input("HR", value=0, min_value=0)
+            new_rbi = st.number_input("RBI", value=0, min_value=0)
+            new_speed = st.number_input("Speed", value=0, min_value=0, max_value=99)
+            new_at_bats = st.number_input("At Bats", value=0, min_value=0)
+        
+        # Ratings - all zeroes initially
+        with col3:
+            new_contact_r = st.number_input("Contact vs Right", value=0, min_value=0, max_value=99)
+            new_contact_l = st.number_input("Contact vs Left", value=0, min_value=0, max_value=99)
+            new_power_r = st.number_input("Power vs Right", value=0, min_value=0, max_value=99)
+            new_power_l = st.number_input("Power vs Left", value=0, min_value=0, max_value=99)
+            new_vision = st.number_input("Vision", value=0, min_value=0, max_value=99)
+            new_clutch = st.number_input("Clutch", value=0, min_value=0, max_value=99)
+        
+        add_button = st.form_submit_button("Add Player")
+        
+        if add_button:
+            if not new_player_name:
+                st.error("Player name is required")
+                return df
+            
+            if not new_bats:
+                st.error("Batting side is required")
+                return df
+                
+            # Create new player data
+            new_player = {
+                "Player": new_player_name,
+                "Bats": new_bats,
+                "Average": new_avg,
+                "HR": new_hr,
+                "RBI": new_rbi,
+                "Speed": new_speed,
+                "AtBats": new_at_bats,
+                "ContactR": new_contact_r,
+                "ContactL": new_contact_l,
+                "PowerR": new_power_r,
+                "PowerL": new_power_l,
+                "Vision": new_vision,
+                "Clutch": new_clutch
+            }
+            
+            # Add positions
+            for i in range(1, 7):
+                new_player[f"Position{i}"] = new_positions[i-1]
+            
+            # Append new player
+            updated_df = pd.concat([df, pd.DataFrame([new_player])], ignore_index=True)
+            
+            # Create backup and save
+            backup_path = save_backup(df, csv_file)
+            updated_df.to_csv(csv_file, index=False)
+            
+            if backup_path:
+                st.success(f"Player '{new_player_name}' added successfully! Backup created at {backup_path}")
+            else:
+                st.success(f"Player '{new_player_name}' added successfully!")
+            
+            return updated_df
+            
+    return df
+
 def main():
     st.set_page_config(page_title="MLB 2K25 Lineup Manager", layout="wide")
     
@@ -51,7 +183,7 @@ def main():
     df = load_csv(csv_file)
     
     # Create tabs for different functionality
-    tab1, tab2, tab3, tab4 = st.tabs(["Edit Players", "Add Player", "Preview Lineups", "Data Statistics"])
+    tab1, tab2, tab3, tab4, tab5 = st.tabs(["Edit Players", "Add Player", "Delete Player", "Preview Lineups", "Data Statistics"])
     
     with tab1:
         st.header("Edit Existing Players")
@@ -59,7 +191,7 @@ def main():
         # Player selection
         player_names = df["Player"].tolist() if not df.empty else []
         player_names.insert(0, "")
-        selected_player = st.selectbox("Select a player to edit", options=player_names)
+        selected_player = st.selectbox("Select a player to edit", options=player_names, key="edit_player_select")
         
         if selected_player:
             player_index = df[df["Player"] == selected_player].index[0]
@@ -130,144 +262,164 @@ def main():
     
     with tab2:
         st.header("Add New Player")
-        
-        with st.form("add_player_form"):
-            col1, col2, col3 = st.columns(3)
-            
-            # Basic info
-            with col1:
-                new_player_name = st.text_input("Player Name")
-                new_bats = st.selectbox("Bats", options=["R", "L", "S"])
-                
-                # Position selection
-                new_positions = []
-                for i in range(1, 7):
-                    new_positions.append(st.text_input(f"Position {i}", value=""))
-            
-            # Stats
-            with col2:
-                new_avg = st.number_input("Average", value=0.000, format="%.3f", min_value=0.0, max_value=1.0, step=0.001)
-                new_hr = st.number_input("HR", value=0, min_value=0)
-                new_rbi = st.number_input("RBI", value=0, min_value=0)
-                new_speed = st.number_input("Speed", value=50, min_value=0, max_value=99)
-                new_at_bats = st.number_input("At Bats", value=0, min_value=0)
-            
-            # Ratings
-            with col3:
-                new_contact_r = st.number_input("Contact vs Right", value=50, min_value=0, max_value=99)
-                new_contact_l = st.number_input("Contact vs Left", value=50, min_value=0, max_value=99)
-                new_power_r = st.number_input("Power vs Right", value=50, min_value=0, max_value=99)
-                new_power_l = st.number_input("Power vs Left", value=50, min_value=0, max_value=99)
-                new_vision = st.number_input("Vision", value=50, min_value=0, max_value=99)
-                new_clutch = st.number_input("Clutch", value=50, min_value=0, max_value=99)
-            
-            add_button = st.form_submit_button("Add Player")
-            
-            if add_button:
-                if not new_player_name:
-                    st.error("Player name is required")
-                else:
-                    # Create new player data
-                    new_player = {
-                        "Player": new_player_name,
-                        "Bats": new_bats,
-                        "Average": new_avg,
-                        "HR": new_hr,
-                        "RBI": new_rbi,
-                        "Speed": new_speed,
-                        "AtBats": new_at_bats,
-                        "ContactR": new_contact_r,
-                        "ContactL": new_contact_l,
-                        "PowerR": new_power_r,
-                        "PowerL": new_power_l,
-                        "Vision": new_vision,
-                        "Clutch": new_clutch
-                    }
-                    
-                    # Add positions
-                    for i in range(1, 7):
-                        new_player[f"Position{i}"] = new_positions[i-1]
-                    
-                    # Append new player
-                    df = pd.concat([df, pd.DataFrame([new_player])], ignore_index=True)
-                    
-                    # Create backup and save
-                    backup_path = save_backup(df, csv_file)
-                    df.to_csv(csv_file, index=False)
-                    
-                    if backup_path:
-                        st.success(f"Player added successfully! Backup created at {backup_path}")
-                    else:
-                        st.success("Player added successfully!")
-    
+        df = add_player_form_component(df, csv_file)
+
     with tab3:
-        st.header("Preview Generated Lineups")
+        st.header("Delete Player")
         
-        if st.button("Generate Lineups"):
-            import subprocess
-            import sys
+        # Player selection for deletion
+        if df.empty:
+            st.info("No players available to delete.")
+        else:
+            st.warning("⚠️ Warning: Deletion is permanent and will take effect immediately.")
             
-            try:
-                # Run the lineup generation script
-                result = subprocess.run([sys.executable, "generate-lineups.py"], 
-                                        capture_output=True, text=True, check=True)
+            # Create a more efficient layout
+            players_to_delete = st.multiselect(
+                "Select player(s) to delete",
+                options=df["Player"].tolist(),
+                key="delete_player_select"
+            )
+            
+            # Show player details before deletion
+            if players_to_delete:
+                # Preview what will be deleted
+                st.subheader(f"Selected Players ({len(players_to_delete)})")
+                selected_data = df[df["Player"].isin(players_to_delete)]
                 
-                # Display the output
-                st.text_area("Lineup Results", value=result.stdout, height=500)
+                # Display essential columns
+                display_columns = ["Player", "Bats", "Average", "HR", "RBI", "Speed"]
                 
-                if result.stderr:
-                    st.error("Errors during lineup generation:")
-                    st.code(result.stderr)
-            except subprocess.CalledProcessError as e:
-                st.error(f"Error running lineup generator: {e}")
-                if e.stderr:
-                    st.code(e.stderr)
+                # Add position columns
+                for i in range(1, 7):
+                    pos_col = f"Position{i}"
+                    if pos_col in df.columns:
+                        display_columns.append(pos_col)
+                
+                st.dataframe(
+                    selected_data[display_columns], 
+                    use_container_width=True,
+                    hide_index=True
+                )
+                
+                # Delete button with immediate action
+                if st.button("Delete Selected Players", key="delete_button", type="primary"):
+                    if players_to_delete:
+                        # Process deletion in batch for better performance
+                        df, backup_path = delete_players_batch(df, players_to_delete, csv_file)
+                        
+                        # Show toast notification with deletion info
+                        num_deleted = len(players_to_delete)
+                        message = f"Deleted {num_deleted} player{'s' if num_deleted > 1 else ''}"
+                        if backup_path:
+                            message += f" (Backup: {os.path.basename(backup_path)})"
+                        
+                        # Force page refresh after deletion
+                        st.toast(message)
+                        st.rerun()
     
     with tab4:
+        st.header("Preview Generated Lineups")
+        
+        lineup_col1, lineup_col2 = st.columns([1, 2])
+        
+        with lineup_col1:
+            file_options = {
+                "roster.csv": "Current Roster (roster.csv)"
+            }
+            
+            selected_file = st.radio("Select file to use for lineup generation:", 
+                                   options=list(file_options.keys()),
+                                   format_func=lambda x: file_options[x])
+        
+        with lineup_col2:
+            if st.button("Generate Lineups", key="generate_lineups_button", use_container_width=True):
+                import subprocess
+                import sys
+                
+                try:
+                    # Create a modified version of the lineup script with the selected file
+                    with open("generate-lineups-temp.py", "w") as f:
+                        with open("generate-lineups.py", "r") as original:
+                            content = original.read()
+                            # Replace the file path in the main() function
+                            modified_content = content.replace(
+                                "file_path = 'roster.csv'", 
+                                f"file_path = '{selected_file}'"
+                            )
+                            f.write(modified_content)
+                    
+                    # Run the modified lineup generation script
+                    result = subprocess.run([sys.executable, "generate-lineups-temp.py"], 
+                                            capture_output=True, text=True, check=True)
+                    
+                    # Display the output
+                    st.text_area("Lineup Results", value=result.stdout, height=500)
+                    
+                    if result.stderr:
+                        st.error("Errors during lineup generation:")
+                        st.code(result.stderr)
+                        
+                    # Clean up temporary file
+                    if os.path.exists("generate-lineups-temp.py"):
+                        os.remove("generate-lineups-temp.py")
+                        
+                except subprocess.CalledProcessError as e:
+                    st.error(f"Error running lineup generator: {e}")
+                    if e.stderr:
+                        st.code(e.stderr)
+                    # Clean up temporary file in case of error
+                    if os.path.exists("generate-lineups-temp.py"):
+                        os.remove("generate-lineups-temp.py")
+    
+    with tab5:
         st.header("Data Statistics")
         
         if not df.empty:
-            st.write(f"Total players: {len(df)}")
+            stats_col1, stats_col2 = st.columns(2)
             
-            # Position distribution
-            st.subheader("Position Distribution")
-            position_counts = {}
-            
-            for i in range(1, 7):
-                pos_col = f"Position{i}"
-                if pos_col in df.columns:
-                    for pos in df[pos_col].dropna().unique():
-                        if pos and pos not in position_counts:
-                            position_counts[pos] = len(df[df[pos_col] == pos])
-                        elif pos and pos in position_counts:
-                            position_counts[pos] += len(df[df[pos_col] == pos])
-            
-            position_df = pd.DataFrame(list(position_counts.items()), columns=['Position', 'Count'])
-            position_df = position_df.sort_values('Count', ascending=False)
-            
-            st.bar_chart(position_df.set_index('Position'))
-            
-            # Batting distribution
-            st.subheader("Batting Distribution")
-            bats_counts = df["Bats"].value_counts().reset_index()
-            bats_counts.columns = ['Bats', 'Count']
-            
-            st.bar_chart(bats_counts.set_index('Bats'))
-            
-            # Rating averages
-            st.subheader("Average Ratings")
-            avg_ratings = {
-                "ContactR": df["ContactR"].mean(),
-                "ContactL": df["ContactL"].mean(),
-                "PowerR": df["PowerR"].mean(),
-                "PowerL": df["PowerL"].mean(),
-                "Vision": df["Vision"].mean(),
-                "Clutch": df["Clutch"].mean(),
-                "Speed": df["Speed"].mean()
-            }
-            
-            rating_df = pd.DataFrame(list(avg_ratings.items()), columns=['Rating', 'Average'])
-            st.bar_chart(rating_df.set_index('Rating'))
+            with stats_col1:
+                st.metric("Total Players", len(df))
+                
+                # Position distribution
+                st.subheader("Position Distribution")
+                position_counts = {}
+                
+                for i in range(1, 7):
+                    pos_col = f"Position{i}"
+                    if pos_col in df.columns:
+                        for pos in df[pos_col].dropna().unique():
+                            if pos and pos not in position_counts:
+                                position_counts[pos] = len(df[df[pos_col] == pos])
+                            elif pos and pos in position_counts:
+                                position_counts[pos] += len(df[df[pos_col] == pos])
+                
+                position_df = pd.DataFrame(list(position_counts.items()), columns=['Position', 'Count'])
+                position_df = position_df.sort_values('Count', ascending=False)
+                
+                st.bar_chart(position_df.set_index('Position'))
+                
+            with stats_col2:
+                # Batting distribution
+                st.subheader("Batting Distribution")
+                bats_counts = df["Bats"].value_counts().reset_index()
+                bats_counts.columns = ['Bats', 'Count']
+                
+                st.bar_chart(bats_counts.set_index('Bats'))
+                
+                # Rating averages
+                st.subheader("Average Ratings")
+                avg_ratings = {
+                    "ContactR": df["ContactR"].mean(),
+                    "ContactL": df["ContactL"].mean(),
+                    "PowerR": df["PowerR"].mean(),
+                    "PowerL": df["PowerL"].mean(),
+                    "Vision": df["Vision"].mean(),
+                    "Clutch": df["Clutch"].mean(),
+                    "Speed": df["Speed"].mean()
+                }
+                
+                rating_df = pd.DataFrame(list(avg_ratings.items()), columns=['Rating', 'Average'])
+                st.bar_chart(rating_df.set_index('Rating'))
             
             # Allow CSV download
             st.subheader("Export Data")
