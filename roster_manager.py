@@ -167,8 +167,143 @@ def add_player_form_component(df, csv_file):
             
     return df
 
+def parse_lineup_output(output_text):
+    """Parse the raw lineup output into structured data for better display
+    
+    Args:
+        output_text: Raw text output from lineup generation script
+        
+    Returns:
+        dict: Structured lineup data for RHP and LHP
+    """
+    lineup_data = {
+        "RHP": None,
+        "LHP": None
+    }
+    
+    # Split the output by the two main sections
+    sections = output_text.split("\nLineup vs ")
+    
+    if len(sections) > 1:
+        rhp_section = sections[0].replace("Lineup vs Right-Handed Pitching:", "").strip()
+        lhp_section = sections[1].replace("Left-Handed Pitching:", "").strip()
+        
+        # Convert text tables to dataframes
+        try:
+            import io
+            rhp_df = pd.read_csv(io.StringIO(rhp_section), sep=r'\s{2,}', engine='python')
+            lhp_df = pd.read_csv(io.StringIO(lhp_section), sep=r'\s{2,}', engine='python')
+            
+            lineup_data["RHP"] = rhp_df
+            lineup_data["LHP"] = lhp_df
+        except Exception:
+            # Fallback if parsing fails
+            lineup_data["RHP"] = rhp_section
+            lineup_data["LHP"] = lhp_section
+    
+    return lineup_data
+
+def display_lineup_card(lineup_df):
+    """Display a lineup in a clean, simple table format with headers
+    
+    This function takes a DataFrame containing lineup data and renders it as
+    a well-formatted table with clear headers. The table shows batting order,
+    field position, player name, batting side, and key statistics for each player.
+    
+    Args:
+        lineup_df: DataFrame containing lineup data with columns for Player, Position,
+                  Bats, Average, HR, RBI, etc.
+    
+    Returns:
+        None - Output is rendered directly to the Streamlit UI
+    """
+    # Handle case where input isn't a proper DataFrame (fallback to text display)
+    if not isinstance(lineup_df, pd.DataFrame):
+        st.text(lineup_df)  # Just show raw text if parsing failed
+        return
+    
+    # Create a copy of the dataframe to manipulate for display
+    display_df = lineup_df.copy()
+    
+    # Add a column for batting order
+    display_df.insert(0, 'Order', range(1, len(display_df) + 1))
+    
+    # Reorder and select columns for display
+    columns_to_display = ['Order', 'Position', 'Player', 'Bats', 'Average', 'HR', 'RBI', 'Speed']
+    
+    # Only include columns that exist in the dataframe
+    display_columns = [col for col in columns_to_display if col in display_df.columns]
+    
+    # Format the display dataframe
+    formatted_df = display_df[display_columns].copy()
+    
+    # Format batting average to 3 decimal places
+    if 'Average' in formatted_df.columns:
+        formatted_df['Average'] = formatted_df['Average'].apply(lambda x: f"{x:.3f}")
+    
+    # Rename columns for better display
+    column_rename = {
+        'Order': '#',
+        'Position': 'Pos',
+        'Player': 'Player',
+        'Bats': 'B',
+        'Average': 'AVG',
+        'HR': 'HR',
+        'RBI': 'RBI',
+        'Speed': 'SPD'
+    }
+    
+    # Only rename columns that exist
+    rename_dict = {k: v for k, v in column_rename.items() if k in formatted_df.columns}
+    formatted_df = formatted_df.rename(columns=rename_dict)
+    
+    # Display the table with styling
+    st.dataframe(
+        formatted_df,
+        use_container_width=True,
+        hide_index=True,
+        column_config={
+            "#": st.column_config.NumberColumn(format="%d", width="small"),
+            "Pos": st.column_config.TextColumn(width="small"),
+            "B": st.column_config.TextColumn(width="small"),
+            "AVG": st.column_config.TextColumn(width="medium"),
+            "HR": st.column_config.NumberColumn(width="small"),
+            "RBI": st.column_config.NumberColumn(width="small"),
+            "SPD": st.column_config.NumberColumn(width="small")
+        }
+    )
+    
+    # Add a summary of the lineup's overall stats
+    if len(display_df) > 0:
+        with st.expander("Lineup Statistics"):
+            col1, col2, col3 = st.columns(3)
+            
+            with col1:
+                avg_avg = display_df['Average'].mean() if 'Average' in display_df.columns else 0
+                total_hr = display_df['HR'].sum() if 'HR' in display_df.columns else 0
+                st.metric("Team AVG", f"{avg_avg:.3f}")
+                st.metric("Total HR", total_hr)
+            
+            with col2:
+                total_rbi = display_df['RBI'].sum() if 'RBI' in display_df.columns else 0
+                avg_speed = display_df['Speed'].mean() if 'Speed' in display_df.columns else 0
+                st.metric("Total RBI", total_rbi)
+                st.metric("Avg Speed", f"{avg_speed:.1f}")
+            
+            with col3:
+                # Count batters by side
+                if 'Bats' in display_df.columns:
+                    bats_counts = display_df['Bats'].value_counts()
+                    right = bats_counts.get('R', 0)
+                    left = bats_counts.get('L', 0)
+                    switch = bats_counts.get('S', 0)
+                    
+                    st.metric("Right-handed", right)
+                    st.metric("Left-handed", left) 
+                    st.metric("Switch hitters", switch)
+
 def main():
-    st.set_page_config(page_title="MLB 2K25 Lineup Manager", layout="wide")
+    st.set_page_config(page_title="MLB2K25 Lineup Manager", layout="wide")
     
     st.title("MLB2K25 Lineup Manager")
     
@@ -320,7 +455,7 @@ def main():
     with tab4:
         st.header("Preview Generated Lineups")
         
-        lineup_col1, lineup_col2 = st.columns([1, 2])
+        lineup_col1, lineup_col2 = st.columns([1, 3])
         
         with lineup_col1:
             file_options = {
@@ -331,45 +466,73 @@ def main():
                                    options=list(file_options.keys()),
                                    format_func=lambda x: file_options[x])
         
-        with lineup_col2:
-            if st.button("Generate Lineups", key="generate_lineups_button", use_container_width=True):
-                import subprocess
-                import sys
+        generate_button = st.button("Generate Lineups", key="generate_lineups_button", 
+                                   use_container_width=True, type="primary")
+    
+    if generate_button:
+        import subprocess
+        import sys
+        import tempfile
+        
+        # Create a spinner to indicate processing
+        with st.spinner("Generating optimal lineups..."):
+            try:
+                # Create a temporary file for the modified script
+                with tempfile.NamedTemporaryFile(suffix='.py', delete=False) as temp_file:
+                    temp_script_path = temp_file.name
+                    
+                    with open("generate-lineups.py", "r") as original:
+                        content = original.read()
+                        # Replace the file path in the main() function
+                        modified_content = content.replace(
+                            "file_path = 'roster.csv'", 
+                            f"file_path = '{selected_file}'"
+                        )
+                        temp_file.write(modified_content.encode())
                 
-                try:
-                    # Create a modified version of the lineup script with the selected file
-                    with open("generate-lineups-temp.py", "w") as f:
-                        with open("generate-lineups.py", "r") as original:
-                            content = original.read()
-                            # Replace the file path in the main() function
-                            modified_content = content.replace(
-                                "file_path = 'roster.csv'", 
-                                f"file_path = '{selected_file}'"
-                            )
-                            f.write(modified_content)
-                    
-                    # Run the modified lineup generation script
-                    result = subprocess.run([sys.executable, "generate-lineups-temp.py"], 
-                                            capture_output=True, text=True, check=True)
-                    
-                    # Display the output
-                    st.text_area("Lineup Results", value=result.stdout, height=500)
+                # Run the modified lineup generation script
+                result = subprocess.run([sys.executable, temp_script_path], 
+                                        capture_output=True, text=True, check=True)
+                
+                # Parse the output
+                lineups = parse_lineup_output(result.stdout)
+                
+                # Clean up temporary file
+                if os.path.exists(temp_script_path):
+                    os.remove(temp_script_path)
+                
+                # Display pretty lineups
+                lineup_tabs = st.tabs(["vs Right-Handed Pitching", "vs Left-Handed Pitching"])
+                
+                with lineup_tabs[0]:
+                    if lineups["RHP"] is not None:
+                        st.subheader("Optimal Lineup vs RHP")
+                        display_lineup_card(lineups["RHP"])
+                    else:
+                        st.info("No lineup data available for RHP")
+                
+                with lineup_tabs[1]:
+                    if lineups["LHP"] is not None:
+                        st.subheader("Optimal Lineup vs LHP")
+                        display_lineup_card(lineups["LHP"])
+                    else:
+                        st.info("No lineup data available for LHP")
+                
+                # Show raw output in expandable section
+                with st.expander("View Raw Output"):
+                    st.text_area("Command Output", value=result.stdout, height=300)
                     
                     if result.stderr:
-                        st.error("Errors during lineup generation:")
+                        st.error("Errors:")
                         st.code(result.stderr)
-                        
-                    # Clean up temporary file
-                    if os.path.exists("generate-lineups-temp.py"):
-                        os.remove("generate-lineups-temp.py")
-                        
-                except subprocess.CalledProcessError as e:
-                    st.error(f"Error running lineup generator: {e}")
-                    if e.stderr:
-                        st.code(e.stderr)
-                    # Clean up temporary file in case of error
-                    if os.path.exists("generate-lineups-temp.py"):
-                        os.remove("generate-lineups-temp.py")
+                    
+            except subprocess.CalledProcessError as e:
+                st.error(f"Error generating lineups: {e}")
+                if e.stderr:
+                    st.code(e.stderr)
+                # Clean up temporary file in case of error
+                if 'temp_script_path' in locals() and os.path.exists(temp_script_path):
+                    os.remove(temp_script_path)
     
     with tab5:
         st.header("Data Statistics")
@@ -420,16 +583,6 @@ def main():
                 
                 rating_df = pd.DataFrame(list(avg_ratings.items()), columns=['Rating', 'Average'])
                 st.bar_chart(rating_df.set_index('Rating'))
-            
-            # Allow CSV download
-            st.subheader("Export Data")
-            csv_data = df.to_csv(index=False)
-            st.download_button(
-                label="Download CSV",
-                data=csv_data,
-                file_name="mlb2k25_export.csv",
-                mime="text/csv"
-            )
         else:
             st.info("No data available for statistics.")
 
