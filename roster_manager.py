@@ -160,19 +160,6 @@ def add_player_form_component(df, csv_file):
         
         # Stats column - all zeroes by default
         with col2:
-            # Batting average with 3 decimal places format
-            new_avg = st.number_input("Average", value=0.000, format="%.3f", min_value=0.0, max_value=1.0, step=0.001)
-            # Home runs
-            new_hr = st.number_input("HR", value=0, min_value=0)
-            # Runs batted in
-            new_rbi = st.number_input("RBI", value=0, min_value=0)
-            # Speed rating (0-99 scale)
-            new_speed = st.number_input("Speed", value=0, min_value=0, max_value=99)
-            # At bats count
-            new_at_bats = st.number_input("At Bats", value=0, min_value=0)
-        
-        # Ratings column - all zeroes initially
-        with col3:
             # Contact ratings split by pitcher handedness
             new_contact_r = st.number_input("Contact vs Right", value=0, min_value=0, max_value=99)
             new_contact_l = st.number_input("Contact vs Left", value=0, min_value=0, max_value=99)
@@ -183,6 +170,19 @@ def add_player_form_component(df, csv_file):
             new_vision = st.number_input("Vision", value=0, min_value=0, max_value=99)
             # Clutch rating affects performance in high-pressure situations
             new_clutch = st.number_input("Clutch", value=0, min_value=0, max_value=99)
+            # Speed rating (0-99 scale)
+            new_speed = st.number_input("Speed", value=0, min_value=0, max_value=99)
+        
+        # Ratings column - all zeroes initially
+        with col3:
+            # Batting average with 3 decimal places format
+            new_avg = st.number_input("Average", value=0.000, format="%.3f", min_value=0.0, max_value=1.0, step=0.001)
+            # Home runs
+            new_hr = st.number_input("HR", value=0, min_value=0)
+            # Runs batted in
+            new_rbi = st.number_input("RBI", value=0, min_value=0)
+            # At bats count
+            new_at_bats = st.number_input("At Bats", value=0, min_value=0)
         
         # Submit button for the form
         add_button = st.form_submit_button("Add Player")
@@ -201,18 +201,18 @@ def add_player_form_component(df, csv_file):
             # Create new player data dictionary with all fields
             new_player = {
                 "Player": new_player_name,
-                "Bats": new_bats,
-                "Average": new_avg,
-                "HR": new_hr,
-                "RBI": new_rbi,
-                "Speed": new_speed,
-                "AtBats": new_at_bats,
+                "Bats": new_bats,    
                 "ContactR": new_contact_r,
                 "ContactL": new_contact_l,
                 "PowerR": new_power_r,
                 "PowerL": new_power_l,
                 "Vision": new_vision,
-                "Clutch": new_clutch
+                "Clutch": new_clutch,
+                "Speed": new_speed,
+                "AtBats": new_at_bats,
+                "Average": new_avg,
+                "HR": new_hr,
+                "RBI": new_rbi
             }
             
             # Add position fields to player data
@@ -472,8 +472,22 @@ def main():
                         pos_val = df.at[player_index, pos_col] if pos_col in df.columns and pd.notna(df.at[player_index, pos_col]) else ""
                         positions.append(st.text_input(f"Position {i}", value=pos_val))
                 
-                # COLUMN 2: Stats
+                # COLUMN 2: Ratings
                 with col2:
+                    # Contact ratings against RHP/LHP
+                    contact_r = st.number_input("Contact vs Right", value=int(df.at[player_index, "ContactR"]), min_value=0, max_value=99)
+                    contact_l = st.number_input("Contact vs Left", value=int(df.at[player_index, "ContactL"]), min_value=0, max_value=99)
+                    # Power ratings against RHP/LHP
+                    power_r = st.number_input("Power vs Right", value=int(df.at[player_index, "PowerR"]), min_value=0, max_value=99)
+                    power_l = st.number_input("Power vs Left", value=int(df.at[player_index, "PowerL"]), min_value=0, max_value=99)
+                    # Vision and clutch ratings
+                    vision = st.number_input("Vision", value=int(df.at[player_index, "Vision"]), min_value=0, max_value=99)
+                    clutch = st.number_input("Clutch", value=int(df.at[player_index, "Clutch"]), min_value=0, max_value=99)
+                    # Speed rating (0-99 scale)
+                    speed = st.number_input("Speed", value=int(df.at[player_index, "Speed"]), min_value=0, max_value=99)
+                
+                # COLUMN 3: Stats
+                with col3:
                     # Batting average with 3 decimal place format
                     avg = st.number_input(
                         "Average", 
@@ -486,23 +500,9 @@ def main():
                     # Home runs
                     hr = st.number_input("HR", value=int(df.at[player_index, "HR"]), min_value=0)
                     # Runs batted in
-                    rbi = st.number_input("RBI", value=int(df.at[player_index, "RBI"]), min_value=0)
-                    # Speed rating (0-99 scale)
-                    speed = st.number_input("Speed", value=int(df.at[player_index, "Speed"]), min_value=0, max_value=99)
+                    rbi = st.number_input("RBI", value=int(df.at[player_index, "RBI"]), min_value=0)  
                     # At bats count
                     at_bats = st.number_input("At Bats", value=int(df.at[player_index, "AtBats"]), min_value=0)
-                
-                # COLUMN 3: Ratings
-                with col3:
-                    # Contact ratings against RHP/LHP
-                    contact_r = st.number_input("Contact vs Right", value=int(df.at[player_index, "ContactR"]), min_value=0, max_value=99)
-                    contact_l = st.number_input("Contact vs Left", value=int(df.at[player_index, "ContactL"]), min_value=0, max_value=99)
-                    # Power ratings against RHP/LHP
-                    power_r = st.number_input("Power vs Right", value=int(df.at[player_index, "PowerR"]), min_value=0, max_value=99)
-                    power_l = st.number_input("Power vs Left", value=int(df.at[player_index, "PowerL"]), min_value=0, max_value=99)
-                    # Vision and clutch ratings
-                    vision = st.number_input("Vision", value=int(df.at[player_index, "Vision"]), min_value=0, max_value=99)
-                    clutch = st.number_input("Clutch", value=int(df.at[player_index, "Clutch"]), min_value=0, max_value=99)
                 
                 # Form submission button
                 submit_button = st.form_submit_button("Save Changes")
